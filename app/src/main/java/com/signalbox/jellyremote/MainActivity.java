@@ -77,7 +77,7 @@ public final class MainActivity extends Activity implements RemoteView.Listener 
         @Override public void run() {
             updateSkipPrompt();
             if (remoteView != null && selectedState != null && !mediaSegments.isEmpty()) {
-                MediaSegment visible = MediaSegment.promptAt(mediaSegments, estimatedPositionTicks());
+                MediaSegment visible = visibleSkipSegment();
                 main.postDelayed(this, visible == null ? 1000L : 250L);
             }
         }
@@ -447,15 +447,22 @@ public final class MainActivity extends Activity implements RemoteView.Listener 
 
     private void updateSkipPrompt() {
         if (remoteView == null) return;
-        RemoteState state = selectedState;
-        MediaSegment segment = state == null || !state.hasMedia
-                ? null : MediaSegment.promptAt(mediaSegments, estimatedPositionTicks());
+        MediaSegment segment = visibleSkipSegment();
         if (segment == null) {
             consumedSegmentKey = "";
         } else if (segment.key.equals(consumedSegmentKey)) {
             segment = null;
         }
         remoteView.setSkipSegment(segment);
+    }
+
+    private MediaSegment visibleSkipSegment() {
+        RemoteState state = selectedState;
+        if (state == null || !state.hasMedia) return null;
+        long position = estimatedPositionTicks();
+        MediaSegment segment = MediaSegment.promptAt(mediaSegments, position);
+        // Jellyfin Web keeps the video OSD and its skip control available while paused.
+        return segment == null && state.paused ? MediaSegment.activeAt(mediaSegments, position) : segment;
     }
 
     @Override public void onPlayState(String command) {

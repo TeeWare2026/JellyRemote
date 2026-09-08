@@ -39,6 +39,10 @@ final class MediaSegment {
         return positionTicks >= promptStartTicks && positionTicks < promptEndTicks;
     }
 
+    boolean contains(long positionTicks) {
+        return positionTicks >= startTicks && positionTicks < endTicks;
+    }
+
     String buttonText() {
         return type == Type.INTRO ? "SKIP INTRO" : "SKIP OUTRO";
     }
@@ -47,6 +51,14 @@ final class MediaSegment {
         if (segments == null) return null;
         for (MediaSegment segment : segments) {
             if (segment.promptVisibleAt(positionTicks)) return segment;
+        }
+        return null;
+    }
+
+    static MediaSegment activeAt(List<MediaSegment> segments, long positionTicks) {
+        if (segments == null) return null;
+        for (MediaSegment segment : segments) {
+            if (segment.contains(positionTicks)) return segment;
         }
         return null;
     }

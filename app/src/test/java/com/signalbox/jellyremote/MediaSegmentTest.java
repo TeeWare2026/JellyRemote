@@ -34,6 +34,15 @@ public final class MediaSegmentTest {
         assertSame(outro, MediaSegment.promptAt(segments, 940L));
     }
 
+    @Test public void findsAnActiveSegmentOutsideItsShortPromptWindow() {
+        MediaSegment intro = new MediaSegment(
+                MediaSegment.Type.INTRO, 100L, 500L, 100L, 180L);
+
+        assertNull(MediaSegment.promptAt(List.of(intro), 300L));
+        assertSame(intro, MediaSegment.activeAt(List.of(intro), 300L));
+        assertNull(MediaSegment.activeAt(List.of(intro), 500L));
+    }
+
     @Test public void usesClearIntroAndOutroLabels() {
         MediaSegment intro = new MediaSegment(
                 MediaSegment.Type.INTRO, 0L, 100L, 0L, 80L);
