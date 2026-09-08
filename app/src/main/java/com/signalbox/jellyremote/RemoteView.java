@@ -43,6 +43,7 @@ final class RemoteView extends FrameLayout {
         void onVolume(int volume);
         void onMute();
         void onSubtitleToggle();
+        void onSkipSegment(MediaSegment segment);
         void onCycleSession();
         void onLogout();
     }
@@ -60,6 +61,7 @@ final class RemoteView extends FrameLayout {
     private final TextView elapsed;
     private final TextView remaining;
     private final TextView helper;
+    private final TextView skipButton;
     private final TextView chapterButton;
     private final TextView subtitleButton;
     private final TextView stopButton;
@@ -79,6 +81,7 @@ final class RemoteView extends FrameLayout {
     private List<RemoteState> sessions = Collections.emptyList();
     private ThemeColors theme = ThemeColors.defaults();
     private List<Chapter> chapters = Collections.emptyList();
+    private MediaSegment skipSegment;
     private boolean seeking;
     private boolean changingVolume;
 
@@ -225,6 +228,16 @@ final class RemoteView extends FrameLayout {
         volumeRow.addView(volume, new LinearLayout.LayoutParams(0, dp(44), 1));
         controls.addView(volumeRow);
 
+        skipButton = actionText("SKIP INTRO   ›");
+        skipButton.setVisibility(View.GONE);
+        skipButton.setOnClickListener(v -> {
+            MediaSegment segment = skipSegment;
+            if (segment != null) listener.onSkipSegment(segment);
+        });
+        LinearLayout.LayoutParams skipLp = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(50));
+        skipLp.topMargin = dp(8);
+        controls.addView(skipButton, skipLp);
+
         chapterButton = actionText("▤   CHAPTERS");
         chapterButton.setContentDescription("Choose a chapter");
         chapterButton.setOnClickListener(v -> showChapterPicker());
@@ -280,6 +293,36 @@ final class RemoteView extends FrameLayout {
         updateMediaHelper();
     }
 
+    void setSkipSegment(MediaSegment segment) {
+        boolean ready = state != null && state.hasMedia && state.supportsControl;
+        MediaSegment next = ready ? segment : null;
+        if (skipSegment != null && next != null && skipSegment.key.equals(next.key)) return;
+
+        skipButton.animate().cancel();
+        skipSegment = next;
+        if (next == null) {
+            if (skipButton.getVisibility() == View.GONE) return;
+            skipButton.animate()
+                    .alpha(0f)
+                    .translationY(-dp(5))
+                    .setDuration(150)
+                    .withEndAction(() -> {
+                        if (skipSegment == null) skipButton.setVisibility(View.GONE);
+                    })
+                    .start();
+            return;
+        }
+
+        skipButton.setText(next.buttonText() + "   ›");
+        skipButton.setContentDescription(next.buttonText());
+        skipButton.setEnabled(true);
+        skipButton.setBackground(skipBackground(next));
+        skipButton.setVisibility(View.VISIBLE);
+        skipButton.setAlpha(0f);
+        skipButton.setTranslationY(dp(6));
+        skipButton.animate().alpha(1f).translationY(0f).setDuration(190).start();
+    }
+
     void setConnectionStatus(boolean online, String text) {
         connectionLabel.setText((online ? "●  " : "○  ") + text.toUpperCase(Locale.US));
         connectionLabel.setTextColor(online ? theme.primary : 0xBFFFFFFF);
@@ -327,6 +370,7 @@ final class RemoteView extends FrameLayout {
         if (!changingVolume) volume.setProgress(state == null ? 100 : state.volume);
         subtitleButton.setText(state != null && state.subtitleIndex >= 0 ? "CC   SUBTITLES ON" : "CC   SUBTITLES");
         setControlsEnabled(ready);
+        if (!ready) setSkipSegment(null);
     }
 
     private void updateMediaHelper() {
@@ -365,11 +409,12 @@ final class RemoteView extends FrameLayout {
 
     private void setControlsEnabled(boolean enabled) {
         float alpha = enabled ? 1f : .38f;
-        for (View view : new View[]{previous, rewind, playPause, forward, next, mute, volume, chapterButton, subtitleButton, stopButton, progress}) {
+        for (View view : new View[]{previous, rewind, playPause, forward, next, mute, volume, skipButton, chapterButton, subtitleButton, stopButton, progress}) {
             view.setEnabled(enabled);
             view.setAlpha(alpha);
         }
         chapterButton.setEnabled(enabled && !chapters.isEmpty());
+        skipButton.setEnabled(enabled && skipSegment != null);
     }
 
     private void seekRelative(int seconds) {
@@ -465,6 +510,7 @@ final class RemoteView extends FrameLayout {
         stateBadge.setBackground(pillBackground(theme.primary, .34f));
         stateBadge.setTextColor(theme.primary);
         chapterButton.setBackground(pillBackground(theme.primary, .24f));
+        skipButton.setBackground(skipBackground(skipSegment));
         subtitleButton.setBackground(pillBackground(theme.secondary, .24f));
         int stopTint = ThemeColors.blend(theme.secondary, Color.rgb(255, 139, 132), .42f);
         stopButton.setBackground(pillBackground(stopTint, .21f));
@@ -501,6 +547,17 @@ final class RemoteView extends FrameLayout {
         shape.setColor(withAlpha(mixed, 224));
         shape.setCornerRadius(dp(50));
         shape.setStroke(dp(1), withAlpha(tint, 80));
+        return shape;
+    }
+
+    private GradientDrawable skipBackground(MediaSegment segment) {
+        int accent = segment != null && segment.type == MediaSegment.Type.OUTRO
+                ? theme.secondary : theme.primary;
+        int mixed = ThemeColors.blend(theme.deep, accent, .42f);
+        GradientDrawable shape = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[]{withAlpha(mixed, 242), withAlpha(ThemeColors.blend(mixed, theme.secondary, .30f), 226)});
+        shape.setCornerRadius(dp(50));
+        shape.setStroke(dp(1), withAlpha(ThemeColors.blend(Color.WHITE, accent, .38f), 116));
         return shape;
     }
 

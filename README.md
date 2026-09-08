@@ -12,6 +12,8 @@ JellyRemote is a native Android remote for any controllable playback session on 
 
 The remote includes play/pause, stop, previous/next episode, ten-second rewind/forward, timeline seeking, chapter selection, mute, volume, and subtitle on/off. The chapter control appears only when the current movie or episode has chapter markers.
 
+When Jellyfin provides Intro or Outro media segments, JellyRemote mirrors the playback client’s short-lived **Skip Intro** or **Skip Outro** control and seeks directly to the end of that segment. Current Jellyfin Media Segments and the legacy Intro Skipper prompt-timing endpoint are both supported; the button remains hidden when there is no active skip prompt.
+
 Artwork is fetched from the Jellyfin server and sampled locally into a coordinated two-accent palette. Glass panels, buttons, progress tracks, status treatments, and ambient lighting adapt to the title while maintaining bright text and dark surfaces for readable contrast.
 
 ## Privacy and networking
@@ -35,4 +37,4 @@ The personal sideload APK is written to `app/build/outputs/apk/release/app-relea
 
 ## API compatibility
 
-The implementation uses Jellyfin's stable session endpoints: `GET /Sessions`, play-state commands under `/Sessions/{id}/Playing/{command}`, and general commands under `/Sessions/{id}/Command`. Subtitle discovery supports both the current item endpoint and the older Jellyfin 10.x user-item route.
+The implementation uses Jellyfin's stable session endpoints: `GET /Sessions`, play-state commands under `/Sessions/{id}/Playing/{command}`, and general commands under `/Sessions/{id}/Command`. Subtitle discovery supports both the current item endpoint and the older Jellyfin 10.x user-item route. Contextual skipping reads `GET /MediaSegments/{itemId}` on current servers and falls back to Intro Skipper's legacy per-episode segments endpoint.

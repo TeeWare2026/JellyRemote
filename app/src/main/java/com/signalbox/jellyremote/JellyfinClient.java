@@ -22,7 +22,7 @@ import java.util.List;
 
 final class JellyfinClient {
     static final String CLIENT_NAME = "JellyRemote";
-    static final String VERSION = "1.0.0";
+    static final String VERSION = "1.1.0";
 
     final String serverUrl;
     private final String deviceId;
@@ -113,6 +113,32 @@ final class JellyfinClient {
 
     List<Chapter> getChapters(String itemId) throws IOException, JSONException {
         return Chapter.fromItem(getItemDetails(itemId));
+    }
+
+    List<MediaSegment> getMediaSegments(String itemId) throws IOException, JSONException {
+        HttpError jellyfinError = null;
+        try {
+            List<MediaSegment> segments = MediaSegment.fromJellyfin(
+                    requestJson("GET", "/MediaSegments/" + encode(itemId), null, true));
+            if (!segments.isEmpty()) return segments;
+        } catch (HttpError error) {
+            if (error.status == 401) throw error;
+            jellyfinError = error;
+        }
+
+        // Intro Skipper versions for Jellyfin 10.8/10.9 expose their own endpoint.
+        // Besides broadening compatibility, it supplies the server's exact prompt window.
+        try {
+            return MediaSegment.fromLegacy(requestJson("GET",
+                    "/Episode/" + encode(itemId) + "/IntroSkipperSegments", null, true));
+        } catch (HttpError error) {
+            if (error.status == 401) throw error;
+            if (jellyfinError != null && jellyfinError.status != 404 && jellyfinError.status != 400) {
+                throw jellyfinError;
+            }
+            if (error.status != 404 && error.status != 400) throw error;
+            return new ArrayList<>();
+        }
     }
 
     private JSONObject getItemDetails(String itemId) throws IOException, JSONException {

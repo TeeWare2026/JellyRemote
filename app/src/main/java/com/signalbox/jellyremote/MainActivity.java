@@ -16,6 +16,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
@@ -59,12 +60,26 @@ public final class MainActivity extends Activity implements RemoteView.Listener 
     private String selectedSessionId = "";
     private String loadedArtKey = "";
     private String loadedChapterKey = "\u0000";
+    private String loadedSegmentKey = "\u0000";
+    private String consumedSegmentKey = "";
+    private List<MediaSegment> mediaSegments = new ArrayList<>();
+    private long selectedStateObservedAt;
     private boolean polling;
     private int generation;
 
     private final Runnable pollTask = new Runnable() {
         @Override public void run() {
             pollNow();
+        }
+    };
+
+    private final Runnable segmentPromptTask = new Runnable() {
+        @Override public void run() {
+            updateSkipPrompt();
+            if (remoteView != null && selectedState != null && !mediaSegments.isEmpty()) {
+                MediaSegment visible = MediaSegment.promptAt(mediaSegments, estimatedPositionTicks());
+                main.postDelayed(this, visible == null ? 1000L : 250L);
+            }
         }
     };
 
@@ -106,6 +121,7 @@ public final class MainActivity extends Activity implements RemoteView.Listener 
     private void showLogin(String message) {
         generation++;
         main.removeCallbacks(pollTask);
+        main.removeCallbacks(segmentPromptTask);
         selectedState = null;
         sessions.clear();
         remoteView = null;
@@ -259,6 +275,9 @@ public final class MainActivity extends Activity implements RemoteView.Listener 
         generation++;
         loadedArtKey = "";
         loadedChapterKey = "\u0000";
+        loadedSegmentKey = "\u0000";
+        consumedSegmentKey = "";
+        mediaSegments = new ArrayList<>();
         selectedSessionId = "";
         client = new JellyfinClient(
                 prefs.getString(SERVER, ""),
@@ -285,13 +304,18 @@ public final class MainActivity extends Activity implements RemoteView.Listener 
                     polling = false;
                     if (generation != requestGeneration || remoteView == null) return;
                     sessions = result;
+                    String previousSessionId = selectedSessionId;
                     RemoteState chosen = chooseSession(result);
                     selectedState = chosen;
+                    selectedStateObservedAt = SystemClock.elapsedRealtime();
                     if (chosen != null) selectedSessionId = chosen.sessionId;
+                    if (chosen == null || !chosen.sessionId.equals(previousSessionId)) consumedSegmentKey = "";
                     remoteView.setConnectionStatus(true, chosen == null ? "server online" : "live");
                     remoteView.setState(chosen, result);
+                    refreshMediaSegments(chosen, requestGeneration);
                     refreshArtwork(chosen, requestGeneration);
                     refreshChapters(chosen, requestGeneration);
+                    updateSkipPrompt();
                     main.postDelayed(pollTask, 1600);
                 });
             } catch (Exception failure) {
@@ -384,6 +408,56 @@ public final class MainActivity extends Activity implements RemoteView.Listener 
         });
     }
 
+    private void refreshMediaSegments(RemoteState state, int requestGeneration) {
+        String segmentKey = state == null || !state.hasMedia ? "" : state.itemId;
+        if (segmentKey.equals(loadedSegmentKey)) return;
+        loadedSegmentKey = segmentKey;
+        mediaSegments = new ArrayList<>();
+        consumedSegmentKey = "";
+        main.removeCallbacks(segmentPromptTask);
+        if (remoteView != null) remoteView.setSkipSegment(null);
+        if (segmentKey.isEmpty()) return;
+
+        network.execute(() -> {
+            try {
+                List<MediaSegment> discovered = client.getMediaSegments(segmentKey);
+                main.post(() -> {
+                    if (generation != requestGeneration || remoteView == null
+                            || !segmentKey.equals(loadedSegmentKey)) return;
+                    mediaSegments = discovered;
+                    updateSkipPrompt();
+                    main.removeCallbacks(segmentPromptTask);
+                    if (!mediaSegments.isEmpty()) main.post(segmentPromptTask);
+                });
+            } catch (Exception ignored) {
+                // Segment support is optional; unavailable APIs simply leave the prompt hidden.
+            }
+        });
+    }
+
+    private long estimatedPositionTicks() {
+        RemoteState state = selectedState;
+        if (state == null) return 0L;
+        long position = state.positionTicks;
+        if (!state.paused && selectedStateObservedAt > 0L) {
+            position += Math.max(0L, SystemClock.elapsedRealtime() - selectedStateObservedAt) * 10_000L;
+        }
+        return state.durationTicks > 0L ? Math.min(position, state.durationTicks) : position;
+    }
+
+    private void updateSkipPrompt() {
+        if (remoteView == null) return;
+        RemoteState state = selectedState;
+        MediaSegment segment = state == null || !state.hasMedia
+                ? null : MediaSegment.promptAt(mediaSegments, estimatedPositionTicks());
+        if (segment == null) {
+            consumedSegmentKey = "";
+        } else if (segment.key.equals(consumedSegmentKey)) {
+            segment = null;
+        }
+        remoteView.setSkipSegment(segment);
+    }
+
     @Override public void onPlayState(String command) {
         RemoteState target = selectedState;
         if (target == null) return;
@@ -440,6 +514,17 @@ public final class MainActivity extends Activity implements RemoteView.Listener 
                 "SetSubtitleStreamIndex", "Index", index));
     }
 
+    @Override public void onSkipSegment(MediaSegment segment) {
+        RemoteState target = selectedState;
+        if (target == null || segment == null) return;
+        consumedSegmentKey = segment.key;
+        updateSkipPrompt();
+        runCommand(() -> client.playState(target.sessionId, "Seek", segment.endTicks), () -> {
+            consumedSegmentKey = "";
+            updateSkipPrompt();
+        });
+    }
+
     @Override public void onCycleSession() {
         if (sessions.size() < 2) {
             Toast.makeText(this, sessions.isEmpty() ? "No controllable sessions yet." : "Only one session is connected.", Toast.LENGTH_SHORT).show();
@@ -452,9 +537,13 @@ public final class MainActivity extends Activity implements RemoteView.Listener 
         RemoteState next = sessions.get((current + 1) % sessions.size());
         selectedSessionId = next.sessionId;
         selectedState = next;
+        selectedStateObservedAt = SystemClock.elapsedRealtime();
+        consumedSegmentKey = "";
         remoteView.setState(next, sessions);
+        refreshMediaSegments(next, generation);
         refreshArtwork(next, generation);
         refreshChapters(next, generation);
+        updateSkipPrompt();
         Toast.makeText(this, "Controlling " + next.deviceName, Toast.LENGTH_SHORT).show();
     }
 
@@ -468,6 +557,10 @@ public final class MainActivity extends Activity implements RemoteView.Listener 
     }
 
     private void runCommand(ThrowingAction action) {
+        runCommand(action, null);
+    }
+
+    private void runCommand(ThrowingAction action, Runnable failureRecovery) {
         final int requestGeneration = generation;
         network.execute(() -> {
             try {
@@ -481,6 +574,7 @@ public final class MainActivity extends Activity implements RemoteView.Listener 
             } catch (Exception failure) {
                 main.post(() -> {
                     if (generation == requestGeneration) {
+                        if (failureRecovery != null) failureRecovery.run();
                         Toast.makeText(this, friendlyError(failure), Toast.LENGTH_SHORT).show();
                     }
                 });
