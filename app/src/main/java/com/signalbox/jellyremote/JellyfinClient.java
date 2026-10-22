@@ -2,7 +2,6 @@ package com.signalbox.jellyremote;
 
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.net.Uri;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -22,7 +21,7 @@ import java.util.List;
 
 final class JellyfinClient {
     static final String CLIENT_NAME = "JellyRemote";
-    static final String VERSION = "1.1.0";
+    static final String VERSION = "1.2.0";
 
     final String serverUrl;
     private final String deviceId;
@@ -96,6 +95,76 @@ final class JellyfinClient {
 
     void simpleCommand(String sessionId, String command) throws IOException, JSONException {
         requestEmpty("POST", "/Sessions/" + encode(sessionId) + "/Command/" + encode(command), null, true);
+    }
+
+    LibraryPage getLibraryPage(LibraryQuery query) throws IOException, JSONException {
+        JSONObject response = requestJson("GET", query.path(userId), null, true);
+        // GetSeasons does not support server paging. Slice locally so large series still paginate.
+        if (query.kind == LibraryQuery.Kind.SEASONS) {
+            JSONArray all = response.optJSONArray("Items");
+            if (all != null) {
+                JSONArray page = new JSONArray();
+                for (int i = query.offset; i < Math.min(all.length(), query.offset + LibraryQuery.PAGE_SIZE); i++) {
+                    page.put(all.get(i));
+                }
+                response.put("TotalRecordCount", all.length()).put("Items", page);
+            }
+        }
+        return new LibraryPage(response, query.offset);
+    }
+
+    LibraryItem getLibraryItem(String itemId) throws IOException, JSONException {
+        return LibraryItem.fromJson(getItemDetails(itemId));
+    }
+
+    void playItem(String sessionId, LibraryItem item, boolean resume) throws IOException, JSONException {
+        if (item.id.isEmpty() || !item.playable) throw new IOException("This title is not available to play.");
+        boolean connected = false;
+        for (RemoteState session : getSessions()) {
+            if (session.sessionId.equals(sessionId) && session.supportsControl) connected = true;
+        }
+        if (!connected) throw new IOException("That playback device disconnected. Return to the remote and select a connected device.");
+        List<String> ids = new ArrayList<>();
+        ids.add(item.id);
+        if (item.isEpisode() && !item.seriesId.isEmpty()) {
+            // Queue following episodes so Next episode continues from the chosen episode.
+            try {
+                JSONObject result = requestJson("GET", "/Shows/" + encode(item.seriesId)
+                        + "/Episodes?userId=" + encode(userId) + "&isMissing=false&startItemId="
+                        + encode(item.id) + "&limit=100", null, true);
+                JSONArray episodes = result.optJSONArray("Items");
+                JSONObject first = episodes == null ? null : episodes.optJSONObject(0);
+                if (first != null && item.id.equals(first.optString("Id"))) {
+                    for (int i = 1; i < episodes.length(); i++) {
+                        JSONObject episode = episodes.optJSONObject(i);
+                        if (episode == null) continue;
+                        LibraryItem next = LibraryItem.fromJson(episode);
+                        if (next.playable && !next.id.isEmpty() && !ids.contains(next.id)) ids.add(next.id);
+                    }
+                }
+            } catch (HttpError error) {
+                if (error.status != 404) throw error;
+            }
+        }
+        String path = "/Sessions/" + encode(sessionId) + "/Playing?playCommand=PlayNow&itemIds="
+                + encode(String.join(",", ids)) + "&startPositionTicks=" + (resume ? item.resumeTicks : 0L);
+        requestEmpty("POST", path, null, true);
+    }
+
+    Bitmap getLibraryImage(LibraryItem item, boolean backdrop) throws IOException {
+        String path = backdrop ? "/Items/" + encode(item.id) + "/Images/Backdrop/0?maxWidth=1000&quality=85"
+                : "/Items/" + encode(item.imageId) + "/Images/Primary?maxWidth=360&quality=85&tag=" + encode(item.imageTag);
+        HttpURLConnection connection = open(path, "GET", true);
+        try {
+            if (connection.getResponseCode() != 200) throw new IOException("No artwork is available.");
+            try (InputStream input = new BufferedInputStream(connection.getInputStream())) {
+                Bitmap bitmap = BitmapFactory.decodeStream(input);
+                if (bitmap == null) throw new IOException("No artwork is available.");
+                return bitmap;
+            }
+        } finally {
+            connection.disconnect();
+        }
     }
 
     int findFirstSubtitleIndex(String itemId) throws IOException, JSONException {
@@ -260,7 +329,7 @@ final class JellyfinClient {
     }
 
     private static String encode(String value) {
-        return Uri.encode(value == null ? "" : value);
+        return LibraryQuery.encode(value);
     }
 
     static final class AuthResult {

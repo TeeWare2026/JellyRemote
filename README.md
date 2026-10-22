@@ -7,8 +7,11 @@ JellyRemote is a native Android remote for any controllable playback session on 
 1. Download the JellyRemote APK from the repository’s **Releases** page, then install it on a phone running Android 8.0 or newer. Android may ask you to allow installs from the app used to open the APK.
 2. Enter the full address of your Jellyfin server, including any configured port or base path.
 3. Sign in with your Jellyfin username and password.
-4. Start a movie or episode in any Jellyfin client that supports remote control.
+4. Sign in on the Jellyfin client you want to watch on, such as Jellyfin Web on your desktop. It can be idle or already playing.
 5. JellyRemote automatically selects the active controllable session. Tap the device panel at the top to cycle when several sessions are available.
+6. Tap **Browse library** to search your movies, series, and episodes, or open **Continue watching**. Select a series, season, and episode, or choose a movie. The detail screen offers **Play**, **Resume**, or **Play from beginning** on the named receiving device.
+
+Browsing does not change playback. Only pressing a play or resume action sends a playback request. The receiving device is checked again before sending; if it has disconnected, select an available session. Episodes queue up to 99 following available episodes for the next-episode control. The library has pagination, and displays only content the signed-in account can access.
 
 The remote includes play/pause, stop, previous/next episode, ten-second rewind/forward, timeline seeking, chapter selection, mute, volume, and subtitle on/off. The chapter control appears only when the current movie or episode has chapter markers.
 
@@ -37,4 +40,4 @@ The personal sideload APK is written to `app/build/outputs/apk/release/app-relea
 
 ## API compatibility
 
-The implementation uses Jellyfin's stable session endpoints: `GET /Sessions`, play-state commands under `/Sessions/{id}/Playing/{command}`, and general commands under `/Sessions/{id}/Command`. Subtitle discovery supports both the current item endpoint and the older Jellyfin 10.x user-item route. Contextual skipping reads `GET /MediaSegments/{itemId}` on current servers and falls back to Intro Skipper's legacy per-episode segments endpoint.
+The implementation uses Jellyfin's stable session endpoints: `GET /Sessions`, play-state commands under `/Sessions/{id}/Playing/{command}`, and general commands under `/Sessions/{id}/Command`. Library browsing uses `/Items`, `/UserItems/Resume`, and `/Shows/{id}/Seasons` or `/Episodes`; starting playback uses `POST /Sessions/{id}/Playing` with `PlayNow`. Subtitle discovery supports both the current item endpoint and the older Jellyfin 10.x user-item route. Contextual skipping reads `GET /MediaSegments/{itemId}` on current servers and falls back to Intro Skipper's legacy per-episode segments endpoint.

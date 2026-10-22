@@ -15,6 +15,7 @@ import android.graphics.RenderEffect;
 import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
 import android.os.Build;
 import android.text.TextUtils;
 import android.view.Gravity;
@@ -45,6 +46,7 @@ final class RemoteView extends FrameLayout {
         void onSubtitleToggle();
         void onSkipSegment(MediaSegment segment);
         void onCycleSession();
+        void onBrowse();
         void onLogout();
     }
 
@@ -77,6 +79,7 @@ final class RemoteView extends FrameLayout {
     private final View mediaCard;
     private final View controlCard;
     private final TextView logoMark;
+    private final TextView browseButton;
     private RemoteState state;
     private List<RemoteState> sessions = Collections.emptyList();
     private ThemeColors theme = ThemeColors.defaults();
@@ -92,7 +95,7 @@ final class RemoteView extends FrameLayout {
 
         backdrop = new ImageView(context);
         backdrop.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        backdrop.setAlpha(.75f);
+        backdrop.setAlpha(.55f);
         addView(backdrop, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
         scrim = new AmbientScrim(context);
@@ -110,10 +113,11 @@ final class RemoteView extends FrameLayout {
         scroll.addView(content, new ScrollView.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         LinearLayout masthead = row(context, Gravity.CENTER_VERTICAL);
-        logoMark = text("JELLYREMOTE", 13, Color.WHITE, Typeface.BOLD);
-        logoMark.setLetterSpacing(.15f);
-        masthead.addView(logoMark, new LinearLayout.LayoutParams(0, dp(42), 1));
+        logoMark = text("JellyRemote", 25, Color.WHITE, Typeface.BOLD);
+        logoMark.setLetterSpacing(-.03f);
+        masthead.addView(logoMark, new LinearLayout.LayoutParams(0, dp(54), 1));
         connectionLabel = text("●  CONNECTING", 10, 0xCCFFFFFF, Typeface.BOLD);
+        connectionLabel.setSingleLine(true);
         connectionLabel.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
         masthead.addView(connectionLabel, new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, dp(42)));
         content.addView(masthead);
@@ -127,17 +131,33 @@ final class RemoteView extends FrameLayout {
         session.setContentDescription("Current playback session. Tap to switch sessions.");
         session.setOnClickListener(v -> listener.onCycleSession());
         sessionTitle = text("Looking for a playback session…", 14, Color.WHITE, Typeface.BOLD);
+        sessionTitle.setSingleLine(true);
+        sessionTitle.setEllipsize(TextUtils.TruncateAt.END);
         sessionMeta = text("Jellyfin session", 11, 0xBFFFFFFF, Typeface.NORMAL);
         sessionMeta.setPadding(0, dp(3), 0, 0);
         session.addView(sessionTitle);
         session.addView(sessionMeta);
         sessionCard = session;
         LinearLayout.LayoutParams sessionLp = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(72));
-        sessionLp.topMargin = dp(2);
+        sessionLp.topMargin = dp(12);
         content.addView(session, sessionLp);
 
-        Space atmosphere = new Space(context);
-        content.addView(atmosphere, new LinearLayout.LayoutParams(1, dp(86)));
+        LinearLayout navigation = row(context, Gravity.CENTER_VERTICAL);
+        TextView remoteLabel = text("YOUR REMOTE", 10, 0xCCFFFFFF, Typeface.BOLD);
+        remoteLabel.setLetterSpacing(.12f);
+        navigation.addView(remoteLabel, new LinearLayout.LayoutParams(0, dp(48), 1));
+        remoteLabel.setGravity(Gravity.CENTER_VERTICAL);
+        browseButton = actionText("Browse library   ›");
+        browseButton.setTextSize(13);
+        browseButton.setLetterSpacing(0f);
+        browseButton.setPadding(dp(18), 0, dp(18), 0);
+        browseButton.setContentDescription("Browse library");
+        browseButton.setOnClickListener(v -> listener.onBrowse());
+        navigation.addView(browseButton, new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, dp(48)));
+        LinearLayout.LayoutParams navigationLp = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(48));
+        navigationLp.topMargin = dp(20);
+        navigationLp.bottomMargin = dp(14);
+        content.addView(navigation, navigationLp);
 
         LinearLayout media = row(context, Gravity.BOTTOM);
         media.setPadding(dp(14), dp(14), dp(16), dp(14));
@@ -145,16 +165,18 @@ final class RemoteView extends FrameLayout {
         artTile.setScaleType(ImageView.ScaleType.CENTER_CROP);
         artTile.setClipToOutline(true);
         artTile.setOutlineProvider(new RoundedOutline(dp(15)));
-        media.addView(artTile, new LinearLayout.LayoutParams(dp(92), dp(126)));
+        media.addView(artTile, new LinearLayout.LayoutParams(dp(100), dp(150)));
 
         LinearLayout mediaWords = new LinearLayout(context);
         mediaWords.setOrientation(LinearLayout.VERTICAL);
         mediaWords.setGravity(Gravity.BOTTOM);
         mediaWords.setPadding(dp(16), 0, 0, dp(2));
         eyebrow = text("READY WHEN YOU ARE", 10, 0xD9FFFFFF, Typeface.BOLD);
-        eyebrow.setLetterSpacing(.12f);
-        title = text("Nothing playing", 27, Color.WHITE, Typeface.BOLD);
-        title.setMaxLines(3);
+        eyebrow.setMaxLines(2);
+        eyebrow.setEllipsize(TextUtils.TruncateAt.END);
+        eyebrow.setLetterSpacing(.04f);
+        title = text("Nothing playing", 28, Color.WHITE, Typeface.BOLD);
+        title.setMaxLines(2);
         title.setEllipsize(TextUtils.TruncateAt.END);
         title.setPadding(0, dp(6), 0, dp(10));
         stateBadge = pill("WAITING");
@@ -163,11 +185,11 @@ final class RemoteView extends FrameLayout {
         mediaWords.addView(stateBadge, new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, dp(28)));
         media.addView(mediaWords, new LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1));
         mediaCard = media;
-        content.addView(media, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(154)));
+        content.addView(media, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(182)));
 
         LinearLayout controls = new LinearLayout(context);
         controls.setOrientation(LinearLayout.VERTICAL);
-        controls.setPadding(dp(16), dp(15), dp(16), dp(14));
+        controls.setPadding(dp(18), dp(18), dp(18), dp(18));
         LinearLayout timeRow = row(context, Gravity.CENTER_VERTICAL);
         elapsed = text("0:00", 11, Color.WHITE, Typeface.BOLD);
         remaining = text("−0:00", 11, 0xBFFFFFFF, Typeface.NORMAL);
@@ -195,7 +217,7 @@ final class RemoteView extends FrameLayout {
                 }
             }
         });
-        controls.addView(progress, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(30)));
+        controls.addView(progress, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(44)));
 
         LinearLayout transport = row(context, Gravity.CENTER);
         previous = icon(IconButton.Kind.PREVIOUS, "Previous episode", () -> listener.onPlayState("PreviousTrack"));
@@ -209,7 +231,7 @@ final class RemoteView extends FrameLayout {
         addTransport(transport, playPause, true);
         addTransport(transport, forward, false);
         addTransport(transport, next, false);
-        controls.addView(transport, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(72)));
+        controls.addView(transport, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(88)));
 
         LinearLayout volumeRow = row(context, Gravity.CENTER_VERTICAL);
         mute = icon(IconButton.Kind.VOLUME, "Mute", listener::onMute);
@@ -242,20 +264,20 @@ final class RemoteView extends FrameLayout {
         chapterButton.setContentDescription("Choose a chapter");
         chapterButton.setOnClickListener(v -> showChapterPicker());
         chapterButton.setVisibility(View.GONE);
-        LinearLayout.LayoutParams chapterLp = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(44));
+        LinearLayout.LayoutParams chapterLp = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(48));
         chapterLp.topMargin = dp(8);
         controls.addView(chapterButton, chapterLp);
 
         LinearLayout utility = row(context, Gravity.CENTER_VERTICAL);
         subtitleButton = actionText("CC   SUBTITLES");
         subtitleButton.setOnClickListener(v -> listener.onSubtitleToggle());
-        utility.addView(subtitleButton, new LinearLayout.LayoutParams(0, dp(44), 1));
+        utility.addView(subtitleButton, new LinearLayout.LayoutParams(0, dp(48), 1));
         Space gap = new Space(context);
         utility.addView(gap, new LinearLayout.LayoutParams(dp(10), 1));
         stopButton = actionText("■   STOP");
         stopButton.setOnClickListener(v -> listener.onPlayState("Stop"));
-        utility.addView(stopButton, new LinearLayout.LayoutParams(0, dp(44), 1));
-        LinearLayout.LayoutParams utilityLp = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(44));
+        utility.addView(stopButton, new LinearLayout.LayoutParams(0, dp(48), 1));
+        LinearLayout.LayoutParams utilityLp = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(48));
         utilityLp.topMargin = dp(8);
         controls.addView(utility, utilityLp);
 
@@ -332,10 +354,13 @@ final class RemoteView extends FrameLayout {
         this.state = state;
         this.sessions = sessions == null ? Collections.emptyList() : sessions;
         boolean ready = state != null && state.hasMedia && state.supportsControl;
+        boolean canBrowse = state != null && state.supportsControl;
+        browseButton.setEnabled(canBrowse);
+        browseButton.setAlpha(canBrowse ? 1f : .4f);
 
         if (state == null) {
             sessionTitle.setText("Waiting for a playback session");
-            sessionMeta.setText("Open Jellyfin on another device and start a video");
+            sessionMeta.setText("Sign in to Jellyfin on your playback device");
             eyebrow.setText("READY WHEN YOU ARE");
             title.setText("Nothing playing");
             stateBadge.setText("WAITING");
@@ -356,9 +381,9 @@ final class RemoteView extends FrameLayout {
                 updateTimes(state.positionTicks, state.durationTicks);
             } else {
                 eyebrow.setText("BROWSER CONNECTED");
-                title.setText("Choose something in Jellyfin");
+                title.setText("What shall we watch?");
                 stateBadge.setText("IDLE");
-                helper.setText("This session is ready for remote control.");
+                helper.setText("Tap Browse library to play something on this device.");
                 updateTimes(0, 0);
             }
         }
@@ -398,6 +423,8 @@ final class RemoteView extends FrameLayout {
         applyTheme(colors == null ? ThemeColors.defaults() : colors);
     }
 
+    ThemeColors colors() { return theme; }
+
     private void updateTimes(long position, long duration) {
         if (!seeking) {
             int value = duration <= 0 ? 0 : (int) Math.min(1000L, position * 1000L / duration);
@@ -409,7 +436,7 @@ final class RemoteView extends FrameLayout {
 
     private void setControlsEnabled(boolean enabled) {
         float alpha = enabled ? 1f : .38f;
-        for (View view : new View[]{previous, rewind, playPause, forward, next, mute, volume, skipButton, chapterButton, subtitleButton, stopButton, progress}) {
+        for (View view : new View[]{previous, rewind, playPause, forward, next, mute, volume, chapterButton, subtitleButton, stopButton, progress}) {
             view.setEnabled(enabled);
             view.setAlpha(alpha);
         }
@@ -504,14 +531,16 @@ final class RemoteView extends FrameLayout {
         theme = colors;
         setBackgroundColor(theme.deep);
         scrim.setColors(theme.primary, theme.secondary, theme.deep);
-        sessionCard.setBackground(glass(theme.primary, theme.secondary, .27f, 22));
-        mediaCard.setBackground(glass(theme.secondary, theme.primary, .32f, 25));
-        controlCard.setBackground(glass(theme.primary, theme.secondary, .24f, 27));
+        sessionCard.setBackground(glass(theme.primary, theme.secondary, .14f, 22));
+        mediaCard.setBackground(glass(theme.secondary, theme.primary, .22f, 26));
+        controlCard.setBackground(glass(theme.primary, theme.secondary, .16f, 28));
+        browseButton.setBackground(new RippleDrawable(ColorStateList.valueOf(0x30FFFFFF),
+                pillBackground(theme.primary, .32f), null));
         stateBadge.setBackground(pillBackground(theme.primary, .34f));
         stateBadge.setTextColor(theme.primary);
-        chapterButton.setBackground(pillBackground(theme.primary, .24f));
+        chapterButton.setBackground(pillBackground(theme.primary, .18f));
         skipButton.setBackground(skipBackground(skipSegment));
-        subtitleButton.setBackground(pillBackground(theme.secondary, .24f));
+        subtitleButton.setBackground(pillBackground(theme.secondary, .18f));
         int stopTint = ThemeColors.blend(theme.secondary, Color.rgb(255, 139, 132), .42f);
         stopButton.setBackground(pillBackground(stopTint, .21f));
         progress.setProgressTintList(ColorStateList.valueOf(theme.primary));
@@ -607,7 +636,7 @@ final class RemoteView extends FrameLayout {
     }
 
     private void addTransport(LinearLayout row, View view, boolean hero) {
-        int size = hero ? 64 : 51;
+        int size = hero ? 76 : 51;
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(size), 1);
         params.leftMargin = dp(2);
         params.rightMargin = dp(2);

@@ -55,6 +55,7 @@ public final class MainActivity extends Activity implements RemoteView.Listener 
     private SharedPreferences prefs;
     private JellyfinClient client;
     private RemoteView remoteView;
+    private LibraryDialog libraryDialog;
     private RemoteState selectedState;
     private List<RemoteState> sessions = new ArrayList<>();
     private String selectedSessionId = "";
@@ -119,6 +120,7 @@ public final class MainActivity extends Activity implements RemoteView.Listener 
     }
 
     private void showLogin(String message) {
+        if (libraryDialog != null) { libraryDialog.dismiss(); libraryDialog = null; }
         generation++;
         main.removeCallbacks(pollTask);
         main.removeCallbacks(segmentPromptTask);
@@ -559,6 +561,36 @@ public final class MainActivity extends Activity implements RemoteView.Listener 
         showLogin(null);
     }
 
+    @Override public void onBrowse() {
+        RemoteState target = selectedState;
+        if (target == null || !target.supportsControl || remoteView == null) {
+            Toast.makeText(this, "Sign in on a playback device and select its session first.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (libraryDialog != null && libraryDialog.isShowing()) return;
+        final int requestGeneration = generation;
+        final JellyfinClient browsingClient = client;
+        libraryDialog = new LibraryDialog(this, browsingClient, target.deviceLabel(), remoteView.colors(),
+                (item, resume, completion) -> network.execute(() -> {
+                    try {
+                        browsingClient.playItem(target.sessionId, item, resume);
+                        main.post(() -> {
+                            if (generation != requestGeneration || isFinishing()) return;
+                            selectedSessionId = target.sessionId;
+                            completion.done(null);
+                            Toast.makeText(this, "Sent to " + target.deviceName, Toast.LENGTH_SHORT).show();
+                            main.removeCallbacks(pollTask);
+                            main.postDelayed(pollTask, 250);
+                        });
+                    } catch (Exception error) {
+                        main.post(() -> {
+                            if (generation == requestGeneration && !isFinishing()) completion.done(friendlyError(error));
+                        });
+                    }
+                }));
+        libraryDialog.show();
+    }
+
     private void clearAuth() {
         prefs.edit().remove(TOKEN).remove(USER_ID).apply();
     }
@@ -663,6 +695,7 @@ public final class MainActivity extends Activity implements RemoteView.Listener 
 
     @Override protected void onDestroy() {
         generation++;
+        if (libraryDialog != null) libraryDialog.dismiss();
         main.removeCallbacksAndMessages(null);
         network.shutdownNow();
         super.onDestroy();
