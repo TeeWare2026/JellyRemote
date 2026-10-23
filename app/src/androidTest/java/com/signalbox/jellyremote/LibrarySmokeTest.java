@@ -32,18 +32,32 @@ public final class LibrarySmokeTest extends Instrumentation {
     private final AtomicInteger plays = new AtomicInteger();
     private volatile String failure;
     private boolean promotion;
+    private boolean chapterChecks;
+    private boolean chapterLive;
 
     @Override public void onCreate(Bundle arguments) {
         super.onCreate(arguments);
         promotion = arguments != null && "true".equals(arguments.getString("promotion"));
+        chapterChecks = arguments != null && "true".equals(arguments.getString("chapters"));
+        chapterLive = arguments != null && "true".equals(arguments.getString("chapterLive"));
         start();
     }
 
     @Override public void onStart() {
         Bundle results = new Bundle();
+        if (chapterLive) {
+            readOnlyChapterDiagnostic(results);
+            return;
+        }
         try (Catalog catalog = new Catalog(promotion)) {
             Intent launch = new Intent(getTargetContext(), MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             activity = (MainActivity) startActivitySync(launch);
+            if (chapterChecks) {
+                runOnMainSync(this::verifyChapterControls);
+                results.putString("stream", "PASS: chapter visibility, late metadata, picker selection, item changes, stale selection, and stopped playback. No live playback commands.\n");
+                finish(Activity.RESULT_OK, results);
+                return;
+            }
             runOnMainSync(this::verifyIdleRemote);
             runOnMainSync(() -> {
                 dialog = new LibraryDialog(activity, new JellyfinClient(catalog.url(), "test", "test", "user"),
@@ -103,6 +117,91 @@ public final class LibrarySmokeTest extends Instrumentation {
             finish(Activity.RESULT_CANCELED, results);
         } finally {
             if (dialog != null) runOnMainSync(() -> dialog.dismiss());
+        }
+    }
+
+    private void readOnlyChapterDiagnostic(Bundle results) {
+        try {
+            android.content.SharedPreferences prefs = getTargetContext().getSharedPreferences("jelly_remote", android.content.Context.MODE_PRIVATE);
+            JellyfinClient client = new JellyfinClient(prefs.getString("server", ""), prefs.getString("device_id", ""),
+                    prefs.getString("token", ""), prefs.getString("user_id", ""));
+            java.util.List<RemoteState> sessions = client.getSessions();
+            StringBuilder report = new StringBuilder("GET-only diagnostic: sessions=").append(sessions.size());
+            int playing = 0;
+            for (RemoteState session : sessions) {
+                if (!session.hasMedia || !session.supportsControl) continue;
+                playing++;
+                report.append("; playing_session=").append(playing)
+                        .append(", embedded_chapters=").append(session.chapters.size())
+                        .append(", fetched_chapters=").append(client.getChapters(session.itemId).size());
+            }
+            report.append("; no playback commands sent.\n");
+            results.putString("stream", report.toString());
+            finish(Activity.RESULT_OK, results);
+        } catch (Exception error) {
+            results.putString("stream", "GET-only diagnostic unavailable: " + error.getClass().getSimpleName() + ". No playback commands sent.\n");
+            finish(Activity.RESULT_CANCELED, results);
+        }
+    }
+
+    private void verifyChapterControls() {
+        java.util.concurrent.atomic.AtomicLong seek = new java.util.concurrent.atomic.AtomicLong(-1L);
+        AtomicInteger seekCount = new AtomicInteger();
+        RemoteView remote = new RemoteView(activity, new RemoteView.Listener() {
+            @Override public void onPlayState(String command) { throw new AssertionError("Unexpected control"); }
+            @Override public void onSeek(long ticks) { seek.set(ticks); seekCount.incrementAndGet(); }
+            @Override public void onVolume(int volume) { throw new AssertionError("Unexpected volume"); }
+            @Override public void onMute() { throw new AssertionError("Unexpected mute"); }
+            @Override public void onSubtitleToggle() { throw new AssertionError("Unexpected subtitles"); }
+            @Override public void onSkipSegment(MediaSegment segment) { throw new AssertionError("Unexpected skip"); }
+            @Override public void onCycleSession() { throw new AssertionError("Unexpected session change"); }
+            @Override public void onBrowse() { throw new AssertionError("Unexpected browsing"); }
+            @Override public void onLogout() { throw new AssertionError("Unexpected sign-out"); }
+        });
+        try {
+            java.util.List<Chapter> chapters = java.util.List.of(new Chapter("Opening", 0L), new Chapter("Main story", 1200000000L));
+            JSONObject item = new JSONObject().put("Id", "chapter-film").put("Name", "Sample film").put("RunTimeTicks", 6000000000L);
+            JSONObject session = new JSONObject().put("Id", "chapter-screen").put("SupportsRemoteControl", true).put("NowPlayingItem", item);
+            RemoteState state = RemoteState.fromJson(session);
+            remote.setChapters(chapters);
+            remote.setState(state, java.util.List.of(state));
+            View button = findText(remote, "▤   CHAPTERS  ·  2");
+            if (button == null || button.getVisibility() != View.VISIBLE || !button.isEnabled()) {
+                throw new AssertionError("Preloaded chapters remain hidden when playback arrives");
+            }
+            remote.setChapters(java.util.Collections.emptyList());
+            if (button.getVisibility() != View.GONE) throw new AssertionError("Missing metadata remains visible");
+            remote.setChapters(chapters);
+            remote.setState(state, java.util.List.of(state));
+            if (button.getVisibility() != View.VISIBLE) throw new AssertionError("Late metadata did not reveal chapters");
+
+            java.lang.reflect.Field pickerField = RemoteView.class.getDeclaredField("chapterDialog");
+            pickerField.setAccessible(true);
+            button.performClick();
+            android.app.Dialog picker = (android.app.Dialog) pickerField.get(remote);
+            if (picker == null || !picker.isShowing()) throw new AssertionError("Chapter picker did not open");
+            View chapterName = findText(picker.getWindow().getDecorView(), "Main story");
+            if (chapterName == null) throw new AssertionError("Chapter is missing from picker");
+            ((View) chapterName.getParent()).performClick();
+            if (seek.get() != 1200000000L || seekCount.get() != 1 || picker.isShowing()) {
+                throw new AssertionError("Chapter selection did not seek to the recorded timestamp");
+            }
+
+            button.performClick();
+            picker = (android.app.Dialog) pickerField.get(remote);
+            View staleName = findText(picker.getWindow().getDecorView(), "Main story");
+            item.put("Id", "another-film");
+            RemoteState next = RemoteState.fromJson(session);
+            remote.setState(next, java.util.List.of(next));
+            if (picker.isShowing() || button.getVisibility() != View.GONE) throw new AssertionError("Old chapters survived title change");
+            ((View) staleName.getParent()).performClick();
+            if (seekCount.get() != 1) throw new AssertionError("Stale chapter sent a seek");
+
+            remote.setChapters(chapters);
+            remote.setState(null, java.util.Collections.emptyList());
+            if (button.getVisibility() != View.GONE) throw new AssertionError("Chapter control survived playback stop");
+        } catch (Exception error) {
+            throw new AssertionError(error);
         }
     }
 

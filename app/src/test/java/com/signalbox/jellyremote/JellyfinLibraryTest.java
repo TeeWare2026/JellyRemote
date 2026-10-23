@@ -22,6 +22,43 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
 public final class JellyfinLibraryTest {
+    @Test public void chapterDiscoveryExplicitlyRequestsMarkersForThePlayingItem() throws Exception {
+        try (FakeServer server = new FakeServer()) {
+            server.reply(200, "{\"Items\":[{\"Id\":\"film\",\"Chapters\":["
+                    + "{\"Name\":\"Opening\",\"StartPositionTicks\":0},"
+                    + "{\"Name\":\"Main story\",\"StartPositionTicks\":1200000000}]}]}");
+            List<Chapter> chapters = server.client().getChapters("film");
+            assertEquals(2, chapters.size());
+            assertEquals(1200000000L, chapters.get(1).startTicks);
+            assertTrue(server.requests.get(0).startsWith("GET /jellyfin/Items?ids=film&"));
+            assertTrue(server.requests.get(0).contains("fields=Chapters"));
+            assertTrue(server.requests.get(0).contains("userId=user"));
+        }
+    }
+
+    @Test public void chapterDiscoverySupportsTheLegacyUserItemRoute() throws Exception {
+        try (FakeServer server = new FakeServer()) {
+            server.reply(404, "");
+            server.reply(404, "");
+            server.reply(200, "{\"Chapters\":[{\"Name\":\"Opening\",\"StartPositionTicks\":0}]}");
+            List<Chapter> chapters = server.client().getChapters("film");
+            assertEquals(1, chapters.size());
+            assertEquals("GET /jellyfin/Users/user/Items/film HTTP/1.1", server.requests.get(2));
+        }
+    }
+
+    @Test public void invalidChapterResponseIsAnErrorRatherThanPermanentEmptyMetadata() throws Exception {
+        try (FakeServer server = new FakeServer()) {
+            server.reply(200, "{}");
+            try {
+                server.client().getChapters("film");
+                fail("An invalid response must be eligible for an error retry.");
+            } catch (IOException expected) {
+                assertTrue(expected.getMessage().contains("chapter response"));
+            }
+        }
+    }
+
     @Test public void searchingOnlyReadsLibraryAndEncodesUserText() throws Exception {
         try (FakeServer server = new FakeServer()) {
             server.reply(200, "{\"Items\":[{\"Id\":\"film\",\"Name\":\"A film\",\"Type\":\"Movie\"}],\"TotalRecordCount\":1}");

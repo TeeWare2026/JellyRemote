@@ -60,7 +60,7 @@ public final class MainActivity extends Activity implements RemoteView.Listener 
     private List<RemoteState> sessions = new ArrayList<>();
     private String selectedSessionId = "";
     private String loadedArtKey = "";
-    private String loadedChapterKey = "\u0000";
+    private final ChapterLoadState chapterLoad = new ChapterLoadState();
     private String loadedSegmentKey = "\u0000";
     private String consumedSegmentKey = "";
     private List<MediaSegment> mediaSegments = new ArrayList<>();
@@ -122,6 +122,7 @@ public final class MainActivity extends Activity implements RemoteView.Listener 
     private void showLogin(String message) {
         if (libraryDialog != null) { libraryDialog.dismiss(); libraryDialog = null; }
         generation++;
+        chapterLoad.reset();
         main.removeCallbacks(pollTask);
         main.removeCallbacks(segmentPromptTask);
         selectedState = null;
@@ -276,7 +277,7 @@ public final class MainActivity extends Activity implements RemoteView.Listener 
     private void showRemote() {
         generation++;
         loadedArtKey = "";
-        loadedChapterKey = "\u0000";
+        chapterLoad.reset();
         loadedSegmentKey = "\u0000";
         consumedSegmentKey = "";
         mediaSegments = new ArrayList<>();
@@ -314,9 +315,9 @@ public final class MainActivity extends Activity implements RemoteView.Listener 
                     if (chosen == null || !chosen.sessionId.equals(previousSessionId)) consumedSegmentKey = "";
                     remoteView.setConnectionStatus(true, chosen == null ? "server online" : "live");
                     remoteView.setState(chosen, result);
+                    refreshChapters(chosen, requestGeneration);
                     refreshMediaSegments(chosen, requestGeneration);
                     refreshArtwork(chosen, requestGeneration);
-                    refreshChapters(chosen, requestGeneration);
                     updateSkipPrompt();
                     main.postDelayed(pollTask, 1600);
                 });
@@ -382,30 +383,26 @@ public final class MainActivity extends Activity implements RemoteView.Listener 
     }
 
     private void refreshChapters(RemoteState state, int requestGeneration) {
-        String chapterKey = state == null || !state.hasMedia ? "" : state.itemId;
-        if (chapterKey.equals(loadedChapterKey)) return;
-        loadedChapterKey = chapterKey;
         if (remoteView == null) return;
-        if (chapterKey.isEmpty()) {
-            remoteView.setChapters(new ArrayList<>());
-            return;
-        }
-        if (!state.chapters.isEmpty()) {
-            remoteView.setChapters(state.chapters);
-            return;
-        }
-        remoteView.setChapters(new ArrayList<>());
+        String itemId = state == null || !state.hasMedia ? "" : state.itemId;
+        chapterLoad.select(itemId, state == null ? null : state.chapters);
+        remoteView.setChapters(chapterLoad.chapters());
+        ChapterLoadState.Request request = chapterLoad.requestIfDue(SystemClock.elapsedRealtime());
+        if (request == null) return;
+        final JellyfinClient chapterClient = client;
         network.execute(() -> {
             try {
-                List<Chapter> discovered = client.getChapters(state.itemId);
+                List<Chapter> discovered = chapterClient.getChapters(request.itemId);
                 main.post(() -> {
                     if (generation == requestGeneration && remoteView != null
-                            && chapterKey.equals(loadedChapterKey)) {
-                        remoteView.setChapters(discovered);
+                            && chapterLoad.succeed(request, discovered, SystemClock.elapsedRealtime())) {
+                        remoteView.setChapters(chapterLoad.chapters());
                     }
                 });
             } catch (Exception ignored) {
-                // Chapters are optional; a missing or older endpoint simply hides the control.
+                main.post(() -> {
+                    if (generation == requestGeneration) chapterLoad.fail(request, SystemClock.elapsedRealtime());
+                });
             }
         });
     }
@@ -549,9 +546,9 @@ public final class MainActivity extends Activity implements RemoteView.Listener 
         selectedStateObservedAt = SystemClock.elapsedRealtime();
         consumedSegmentKey = "";
         remoteView.setState(next, sessions);
+        refreshChapters(next, generation);
         refreshMediaSegments(next, generation);
         refreshArtwork(next, generation);
-        refreshChapters(next, generation);
         updateSkipPrompt();
         Toast.makeText(this, "Controlling " + next.deviceName, Toast.LENGTH_SHORT).show();
     }

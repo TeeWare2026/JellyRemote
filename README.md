@@ -2,7 +2,7 @@
 
 An Android remote control for Jellyfin, with library browsing and a frosted-glass interface that adapts to the artwork of the current movie or series.
 
-**[Download the Android APK](https://github.com/TeeWare2026/JellyRemote/releases/download/v1.2.0/JellyRemote-1.2.0.apk)** · [Latest release](https://github.com/TeeWare2026/JellyRemote/releases/latest) · [Report a problem](https://github.com/TeeWare2026/JellyRemote/issues)
+**[Download the Android APK](https://github.com/TeeWare2026/JellyRemote/releases/download/v1.2.1/JellyRemote-1.2.1.apk)** · [Latest release](https://github.com/TeeWare2026/JellyRemote/releases/latest) · [Report a problem](https://github.com/TeeWare2026/JellyRemote/issues)
 
 Android 8.0+ · Free to download · Configurable server address
 

@@ -21,7 +21,7 @@ import java.util.List;
 
 final class JellyfinClient {
     static final String CLIENT_NAME = "JellyRemote";
-    static final String VERSION = "1.2.0";
+    static final String VERSION = "1.2.1";
 
     final String serverUrl;
     private final String deviceId;
@@ -181,7 +181,20 @@ final class JellyfinClient {
     }
 
     List<Chapter> getChapters(String itemId) throws IOException, JSONException {
-        return Chapter.fromItem(getItemDetails(itemId));
+        try {
+            JSONObject response = requestJson("GET", "/Items?ids=" + encode(itemId)
+                    + "&userId=" + encode(userId) + "&fields=Chapters&enableImages=false", null, true);
+            JSONArray items = response.optJSONArray("Items");
+            if (items == null) throw new IOException("Jellyfin returned an invalid chapter response.");
+            for (int i = 0; i < items.length(); i++) {
+                JSONObject item = items.optJSONObject(i);
+                if (item != null && itemId.equals(item.optString("Id"))) return Chapter.fromItem(item);
+            }
+            return new ArrayList<>();
+        } catch (HttpError error) {
+            if (error.status != 404) throw error;
+            return Chapter.fromItem(getItemDetails(itemId));
+        }
     }
 
     List<MediaSegment> getMediaSegments(String itemId) throws IOException, JSONException {

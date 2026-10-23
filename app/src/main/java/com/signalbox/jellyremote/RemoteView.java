@@ -84,6 +84,7 @@ final class RemoteView extends FrameLayout {
     private List<RemoteState> sessions = Collections.emptyList();
     private ThemeColors theme = ThemeColors.defaults();
     private List<Chapter> chapters = Collections.emptyList();
+    private Dialog chapterDialog;
     private MediaSegment skipSegment;
     private boolean seeking;
     private boolean changingVolume;
@@ -306,13 +307,19 @@ final class RemoteView extends FrameLayout {
 
     void setChapters(List<Chapter> chapters) {
         this.chapters = chapters == null ? Collections.emptyList() : chapters;
+        updateChapterButton();
+        updateMediaHelper();
+    }
+
+    private void updateChapterButton() {
         boolean available = state != null && state.hasMedia && !this.chapters.isEmpty();
         chapterButton.setVisibility(available ? View.VISIBLE : View.GONE);
-        chapterButton.setEnabled(available);
+        boolean enabled = available && state.supportsControl;
+        chapterButton.setEnabled(enabled);
+        chapterButton.setAlpha(enabled ? 1f : .38f);
         chapterButton.setText(available
                 ? "▤   CHAPTERS  ·  " + this.chapters.size()
                 : "▤   CHAPTERS");
-        updateMediaHelper();
     }
 
     void setSkipSegment(MediaSegment segment) {
@@ -351,6 +358,10 @@ final class RemoteView extends FrameLayout {
     }
 
     void setState(RemoteState state, List<RemoteState> sessions) {
+        if (this.state != null && (state == null || !this.state.itemId.equals(state.itemId))) {
+            chapters = Collections.emptyList();
+            if (chapterDialog != null) chapterDialog.dismiss();
+        }
         this.state = state;
         this.sessions = sessions == null ? Collections.emptyList() : sessions;
         boolean ready = state != null && state.hasMedia && state.supportsControl;
@@ -395,6 +406,7 @@ final class RemoteView extends FrameLayout {
         if (!changingVolume) volume.setProgress(state == null ? 100 : state.volume);
         subtitleButton.setText(state != null && state.subtitleIndex >= 0 ? "CC   SUBTITLES ON" : "CC   SUBTITLES");
         setControlsEnabled(ready);
+        updateChapterButton();
         if (!ready) setSkipSegment(null);
     }
 
@@ -452,8 +464,14 @@ final class RemoteView extends FrameLayout {
     }
 
     private void showChapterPicker() {
-        if (chapters.isEmpty()) return;
+        if (chapters.isEmpty() || state == null || !state.hasMedia || !state.supportsControl) return;
+        if (chapterDialog != null) chapterDialog.dismiss();
+        final String chapterItemId = state.itemId;
         Dialog dialog = new Dialog(getContext());
+        chapterDialog = dialog;
+        dialog.setOnDismissListener(ignored -> {
+            if (chapterDialog == dialog) chapterDialog = null;
+        });
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
 
         LinearLayout panel = new LinearLayout(getContext());
@@ -493,7 +511,9 @@ final class RemoteView extends FrameLayout {
             row.setFocusable(true);
             row.setContentDescription(chapter.displayName(i) + ", " + chapter.timeLabel());
             row.setOnClickListener(v -> {
-                listener.onSeek(chapter.startTicks);
+                if (state != null && state.supportsControl && chapterItemId.equals(state.itemId)) {
+                    listener.onSeek(chapter.startTicks);
+                }
                 dialog.dismiss();
             });
             TextView name = text(chapter.displayName(i), 14, Color.WHITE, Typeface.BOLD);
