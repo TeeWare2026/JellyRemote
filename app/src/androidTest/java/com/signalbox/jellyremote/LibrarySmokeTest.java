@@ -31,27 +31,36 @@ public final class LibrarySmokeTest extends Instrumentation {
     private MainActivity activity;
     private final AtomicInteger plays = new AtomicInteger();
     private volatile String failure;
+    private boolean promotion;
 
     @Override public void onCreate(Bundle arguments) {
         super.onCreate(arguments);
+        promotion = arguments != null && "true".equals(arguments.getString("promotion"));
         start();
     }
 
     @Override public void onStart() {
         Bundle results = new Bundle();
-        try (Catalog catalog = new Catalog()) {
+        try (Catalog catalog = new Catalog(promotion)) {
             Intent launch = new Intent(getTargetContext(), MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             activity = (MainActivity) startActivitySync(launch);
             runOnMainSync(this::verifyIdleRemote);
             runOnMainSync(() -> {
                 dialog = new LibraryDialog(activity, new JellyfinClient(catalog.url(), "test", "test", "user"),
-                        "Test screen", ThemeColors.defaults(), (item, resume, completion) -> {
+                        promotion ? "Living room" : "Test screen", ThemeColors.defaults(), (item, resume, completion) -> {
                             if (!"episode".equals(item.id) || !resume) failure = "Wrong episode or resume position";
                             plays.incrementAndGet();
                             completion.done("Simulated offline receiver. Try again.");
                         });
                 dialog.show();
             });
+            if (promotion) {
+                capturePromotion();
+                if (plays.get() != 0 || catalog.posts.get() != 0) throw new AssertionError("Demo changed playback");
+                results.putString("stream", "PASS: captured demo screens using fictional titles and a local catalog; no playback commands.\n");
+                finish(Activity.RESULT_OK, results);
+                return;
+            }
             awaitText("The Night Garden");
             awaitImage();
             screenshot("library-movies.png");
@@ -95,6 +104,30 @@ public final class LibrarySmokeTest extends Instrumentation {
         } finally {
             if (dialog != null) runOnMainSync(() -> dialog.dismiss());
         }
+    }
+
+    private void capturePromotion() throws Exception {
+        awaitText("The Night Garden");
+        settleAndCapture("library-movies.png");
+        click("Series");
+        awaitText("The Little Astronaut");
+        settleAndCapture("library-series.png");
+        selectFirst();
+        awaitText("Season 1");
+        settleAndCapture("library-seasons.png");
+        selectFirst();
+        awaitText("First Light");
+        settleAndCapture("library-episodes.png");
+        selectFirst();
+        awaitText("▶  Resume from 2:00");
+        settleAndCapture("library-episode.png");
+    }
+
+    private void settleAndCapture(String name) throws Exception {
+        awaitImage();
+        Thread.sleep(1800);
+        waitForIdleSync();
+        screenshot(name);
     }
 
     private void click(String label) {
@@ -174,12 +207,7 @@ public final class LibrarySmokeTest extends Instrumentation {
             RemoteState playing = RemoteState.fromJson(session);
             remote.setState(playing, java.util.List.of(playing));
             remote.setConnectionStatus(true, "live");
-            Bitmap art = Bitmap.createBitmap(720, 1080, Bitmap.Config.ARGB_8888);
-            Canvas artCanvas = new Canvas(art);
-            android.graphics.Paint paint = new android.graphics.Paint();
-            paint.setShader(new android.graphics.LinearGradient(0, 0, 720, 1080,
-                    new int[]{0xFF30485D, 0xFF6E548F, 0xFFC88B68}, null, android.graphics.Shader.TileMode.CLAMP));
-            artCanvas.drawRect(0, 0, 720, 1080, paint);
+            Bitmap art = DemoArtwork.create("ambient-film0", 720, 1080);
             remote.setArtwork(art, ThemeColors.from(art));
             android.util.DisplayMetrics metrics = activity.getResources().getDisplayMetrics();
             remote.measure(View.MeasureSpec.makeMeasureSpec(metrics.widthPixels, View.MeasureSpec.EXACTLY),
@@ -228,8 +256,10 @@ public final class LibrarySmokeTest extends Instrumentation {
         private final ServerSocket socket = new ServerSocket(0, 4, InetAddress.getByName("127.0.0.1"));
         private final AtomicInteger posts = new AtomicInteger();
         private final Thread worker;
+        private final boolean promotion;
 
-        Catalog() throws Exception {
+        Catalog(boolean promotion) throws Exception {
+            this.promotion = promotion;
             worker = new Thread(() -> {
                 while (!socket.isClosed()) {
                     try (Socket connection = socket.accept()) {
@@ -243,15 +273,8 @@ public final class LibrarySmokeTest extends Instrumentation {
                         byte[] body;
                         String mime;
                         if (request.contains("/Images/")) {
-                            Bitmap image = Bitmap.createBitmap(400, 600, Bitmap.Config.ARGB_8888);
-                            Canvas canvas = new Canvas(image);
-                            android.graphics.Paint paint = new android.graphics.Paint();
-                            paint.setShader(new android.graphics.LinearGradient(0, 0, 400, 600,
-                                    new int[]{0xFF293A68, 0xFF7669A8, 0xFFDAA77A}, null, android.graphics.Shader.TileMode.CLAMP));
-                            canvas.drawRect(0, 0, 400, 600, paint);
-                            paint.setShader(null);
-                            paint.setColor(0xFFD8C9AE);
-                            canvas.drawCircle(270, 190, 86, paint);
+                            String itemId = request.split("/Items/", 2)[1].split("/", 2)[0];
+                            Bitmap image = DemoArtwork.create(itemId, 600, 900);
                             java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
                             image.compress(Bitmap.CompressFormat.PNG, 100, output);
                             image.recycle();
@@ -291,12 +314,13 @@ public final class LibrarySmokeTest extends Instrumentation {
             } else if (request.contains("includeItemTypes=Series")) {
                 items.put(new JSONObject().put("Id", "series").put("Type", "Series").put("Name", "The Little Astronaut"));
             } else {
-                total = 49;
+                total = promotion ? 6 : 49;
                 boolean second = request.contains("startIndex=48");
-                for (int i = 0; i < (second ? 1 : 48); i++) {
+                String[] titles = {"The Night Garden", "Beyond the Blue", "Amber Coast", "Quiet Orbit", "After the Rain", "Northern Light"};
+                for (int i = 0; i < (promotion ? 6 : second ? 1 : 48); i++) {
                     items.put(new JSONObject().put("Id", "film" + i).put("Type", "Movie")
                             .put("ProductionYear", 2025).put("RunTimeTicks", 63000000000L)
-                            .put("Name", second ? "The Night Garden: Part II" : i % 2 == 0 ? "The Night Garden" : "Beyond the Blue"));
+                            .put("Name", promotion ? titles[i] : second ? "The Night Garden: Part II" : i % 2 == 0 ? "The Night Garden" : "Beyond the Blue"));
                 }
             }
             return new JSONObject().put("Items", items).put("TotalRecordCount", total).toString();

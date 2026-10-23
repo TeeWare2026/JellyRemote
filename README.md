@@ -1,6 +1,36 @@
 # JellyRemote
 
-JellyRemote is a native Android remote for any controllable playback session on a Jellyfin server.
+**Your Jellyfin screen, within reach.**
+
+Browse your collection, choose what plays on your desktop, and control it from your Android phone. JellyRemote combines a library browser with a frosted-glass remote whose colours follow the movie or series you're watching.
+
+**[Download the Android APK](https://github.com/TeeWare2026/JellyRemote/releases/download/v1.2.0/JellyRemote-1.2.0.apk)** · [Latest release](https://github.com/TeeWare2026/JellyRemote/releases/latest) · [Report a problem](https://github.com/TeeWare2026/JellyRemote/issues)
+
+Android 8.0+ · Free to download · Connects to your own Jellyfin server
+
+<p align="center">
+  <img src="docs/media/demo.gif" width="390" alt="JellyRemote product tour: playback controls, movie browsing, series, seasons, episodes, and resume options" />
+</p>
+
+The tour and screenshots use a fictional demo library. The screens are captured from the app; your account and server details are not part of the demo.
+
+<p align="center">
+  <img src="docs/media/remote.png" width="245" alt="Artwork-matched JellyRemote playback controls" />
+  <img src="docs/media/library.png" width="245" alt="Browse movies with artwork and search in JellyRemote" />
+  <img src="docs/media/episode.png" width="245" alt="Episode details with resume and play-from-beginning options" />
+</p>
+
+## What you can do
+
+- **Choose your next watch.** Search movies, series, and episodes; browse seasons; pick up from Continue watching.
+- **Send it to your screen.** Play or resume a title on an existing controllable Jellyfin session, including an idle signed-in desktop browser.
+- **Keep the controls close.** Play, pause, stop, seek, adjust volume, mute, toggle subtitles, and move between episodes.
+- **Jump to the right moment.** Choose chapters or use contextual intro/outro controls when segment information is available.
+- **Let the artwork set the mood.** Coordinated colours, dark glass surfaces, and readable text adapt to the playing title.
+
+JellyRemote controls another Jellyfin client; video plays on the selected receiving device. Sign in on that device and keep its Jellyfin session open. It must support remote control, and your account must have permission to control it.
+
+This is an independent companion app, not an official Jellyfin client.
 
 ## Install and use
 
