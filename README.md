@@ -1,18 +1,16 @@
 # JellyRemote
 
-**Your Jellyfin screen, within reach.**
-
-Browse your collection, choose what plays on your desktop, and control it from your Android phone. JellyRemote combines a library browser with a frosted-glass remote whose colours follow the movie or series you're watching.
+An Android remote control for Jellyfin, with library browsing and a frosted-glass interface that adapts to the artwork of the current movie or series.
 
 **[Download the Android APK](https://github.com/TeeWare2026/JellyRemote/releases/download/v1.2.0/JellyRemote-1.2.0.apk)** · [Latest release](https://github.com/TeeWare2026/JellyRemote/releases/latest) · [Report a problem](https://github.com/TeeWare2026/JellyRemote/issues)
 
-Android 8.0+ · Free to download · Connects to your own Jellyfin server
+Android 8.0+ · Free to download · Configurable server address
 
 <p align="center">
   <img src="docs/media/demo.gif" width="390" alt="JellyRemote product tour: playback controls, movie browsing, series, seasons, episodes, and resume options" />
 </p>
 
-The tour and screenshots use a fictional demo library. The screens are captured from the app; your account and server details are not part of the demo.
+Screenshots and demo use a sample library.
 
 <p align="center">
   <img src="docs/media/remote.png" width="245" alt="Artwork-matched JellyRemote playback controls" />
@@ -20,26 +18,26 @@ The tour and screenshots use a fictional demo library. The screens are captured 
   <img src="docs/media/episode.png" width="245" alt="Episode details with resume and play-from-beginning options" />
 </p>
 
-## What you can do
+## Features
 
-- **Choose your next watch.** Search movies, series, and episodes; browse seasons; pick up from Continue watching.
-- **Send it to your screen.** Play or resume a title on an existing controllable Jellyfin session, including an idle signed-in desktop browser.
-- **Keep the controls close.** Play, pause, stop, seek, adjust volume, mute, toggle subtitles, and move between episodes.
-- **Jump to the right moment.** Choose chapters or use contextual intro/outro controls when segment information is available.
-- **Let the artwork set the mood.** Coordinated colours, dark glass surfaces, and readable text adapt to the playing title.
+- Movie, series, season, and episode browsing, with search and Continue watching.
+- Playback and resume on an existing Jellyfin session, including an idle desktop browser.
+- Play/pause, stop, timeline seeking, ten-second rewind/forward, volume, mute, subtitles, and previous/next episode.
+- Chapter selection and contextual intro/outro skipping when the relevant markers are available.
+- Artwork-based colours, dark glass panels, and coordinated playback controls.
 
-JellyRemote controls another Jellyfin client; video plays on the selected receiving device. Sign in on that device and keep its Jellyfin session open. It must support remote control, and your account must have permission to control it.
+Video plays on the selected receiving device. Playback requires an open, signed-in Jellyfin session with remote-control support and an account with permission to control it.
 
 This is an independent companion app, not an official Jellyfin client.
 
 ## Install and use
 
-1. Download the JellyRemote APK from the repository’s **Releases** page, then install it on a phone running Android 8.0 or newer. Android may ask you to allow installs from the app used to open the APK.
-2. Enter the full address of your Jellyfin server, including any configured port or base path.
-3. Sign in with your Jellyfin username and password.
-4. Sign in on the Jellyfin client you want to watch on, such as Jellyfin Web on your desktop. It can be idle or already playing.
+1. Download the APK from **Releases** and install it on Android 8.0 or newer. Android may require permission to install apps from the browser or file manager.
+2. Enter the Jellyfin server address, including any configured port or base path.
+3. Sign in with a Jellyfin account.
+4. Open a signed-in Jellyfin client on the receiving device, such as Jellyfin Web on a desktop. The session can be idle or already playing.
 5. JellyRemote automatically selects the active controllable session. Tap the device panel at the top to cycle when several sessions are available.
-6. Tap **Browse library** to search your movies, series, and episodes, or open **Continue watching**. Select a series, season, and episode, or choose a movie. The detail screen offers **Play**, **Resume**, or **Play from beginning** on the named receiving device.
+6. Open **Browse library** to find a movie or episode. The detail screen offers **Play**, **Resume**, or **Play from beginning** on the named receiving device.
 
 Browsing does not change playback. Only pressing a play or resume action sends a playback request. The receiving device is checked again before sending; if it has disconnected, select an available session. Episodes queue up to 99 following available episodes for the next-episode control. The library has pagination, and displays only content the signed-in account can access.
 
